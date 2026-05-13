@@ -2,3 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+# Ignore raw data
+data_raw/
+*.dta
+*.csv
+*.zip
+*.rds
