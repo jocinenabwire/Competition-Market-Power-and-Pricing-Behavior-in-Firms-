@@ -1,10 +1,7 @@
 ############################################################
-# Competition, Market Power, and Pricing Behaviour in Firms
-# Reproducible R script for GitHub
-############################################################
-
-############################################################
-# 0. Clean environment
+# Competitive Pressure and Firm Performance
+# Evidence from Enterprise Surveys
+# New specification: sector controls + country fixed effects
 ############################################################
 
 rm(list = ls())
@@ -13,19 +10,16 @@ rm(list = ls())
 # 1. Load packages
 ############################################################
 
-# Run install.packages() only once if needed:
 # install.packages(c(
-#   "tidyverse", "haven", "here", "janitor", "labelled",
-#   "modelsummary", "fixest", "sandwich", "lmtest",
-#   "GGally", "officer", "flextable", "broom", "car",
-#   "marginaleffects", "scales"
+#   "tidyverse", "haven", "here", "janitor", "modelsummary",
+#   "fixest", "sandwich", "lmtest", "GGally", "officer",
+#   "flextable", "car", "scales"
 # ))
 
 library(tidyverse)
 library(haven)
 library(here)
 library(janitor)
-library(labelled)
 library(modelsummary)
 library(fixest)
 library(sandwich)
@@ -33,29 +27,22 @@ library(lmtest)
 library(GGally)
 library(officer)
 library(flextable)
-library(broom)
 library(car)
-library(marginaleffects)
 library(scales)
 
 ############################################################
-# 2. Create results folder
+# 2. Create results folder and import data
 ############################################################
 
 dir.create(here("results"), showWarnings = FALSE)
 
-############################################################
-# 3. Import raw data
-############################################################
-
-# Put the .dta file in the main GitHub folder.
-# If the file name changes, change only this line.
-
-raw_data <- read_dta(here("New_Comprehensive_April_01_2026.dta")) %>%
+raw_data <- read_dta(
+  here("data_raw", "New_Comprehensive_April_01_2026.dta")
+) %>%
   clean_names()
 
 ############################################################
-# 4. Helper functions
+# 3. Helper functions
 ############################################################
 
 clean_negative_codes <- function(x) {
@@ -69,25 +56,42 @@ winsorise <- function(x, probs = c(0.01, 0.99)) {
   return(x)
 }
 
+z_score <- function(x) {
+  as.numeric(scale(x))
+}
+
 ############################################################
-# 5. Construct variables
+# 4. Construct variables
 ############################################################
 
 data <- raw_data %>%
   mutate(
+    ########################################################
+    # Identifiers
+    ########################################################
+    
     firm_id    = idstd,
     country_id = as.factor(country),
     region_id  = as.factor(region),
     year       = clean_negative_codes(a14y),
     weight     = wt,
     
+    ########################################################
+    # Sector controls
+    ########################################################
+    
     sector_main   = as.factor(sector_ms),
     sector_strata = as.factor(stra_sector),
     industry_isic = clean_negative_codes(isic_v4),
     industry_fe   = as.factor(industry_isic),
     
-    employees    = clean_negative_codes(size_num),
-    ln_employees = log(employees + 1),
+    ########################################################
+    # Firm size and structure
+    ########################################################
+    
+    employees = clean_negative_codes(size_num),
+    employees = ifelse(employees <= 0, NA, employees),
+    ln_employees = log(employees),
     
     size_cat = factor(
       size,
@@ -101,21 +105,83 @@ data <- raw_data %>%
       TRUE ~ NA_real_
     ),
     
+    ########################################################
+    # Firm age and management
+    ########################################################
+    
+    year_registered = clean_negative_codes(b6b),
+    
+    firm_age = ifelse(
+      !is.na(year) & !is.na(year_registered),
+      year - year_registered,
+      NA
+    ),
+    firm_age = ifelse(firm_age < 0 | firm_age > 150, NA, firm_age),
+    firm_age = winsorise(firm_age),
+    
     manager_experience = clean_negative_codes(b7),
     manager_experience = ifelse(manager_experience > 80, NA, manager_experience),
     manager_experience = winsorise(manager_experience),
     
-    female_manager = case_when(
-      "b7a" %in% names(.) & clean_negative_codes(b7a) == 1 ~ 1,
-      "b7a" %in% names(.) & clean_negative_codes(b7a) == 2 ~ 0,
+    ########################################################
+    # Main outcome 1: firm performance
+    ########################################################
+    
+    sales_total = clean_negative_codes(d2),
+    sales_total = ifelse(sales_total <= 0, NA, sales_total),
+    sales_total = winsorise(sales_total),
+    ln_sales = log(sales_total),
+    
+    sales_per_worker = sales_total / employees,
+    sales_per_worker = ifelse(sales_per_worker <= 0, NA, sales_per_worker),
+    sales_per_worker = winsorise(sales_per_worker),
+    ln_sales_per_worker = log(sales_per_worker),
+    
+    ########################################################
+    # Main outcome 2: export participation
+    ########################################################
+    
+    export_share = clean_negative_codes(d3c),
+    export_share = ifelse(export_share < 0 | export_share > 100, NA, export_share),
+    
+    exporter = case_when(
+      !is.na(export_share) & export_share > 0 ~ 1,
+      !is.na(export_share) & export_share == 0 ~ 0,
       TRUE ~ NA_real_
     ),
     
-    year_registered = clean_negative_codes(b6b),
-    firm_age = ifelse(!is.na(year) & !is.na(year_registered),
-                      year - year_registered, NA),
-    firm_age = ifelse(firm_age < 0 | firm_age > 150, NA, firm_age),
-    firm_age = winsorise(firm_age),
+    ########################################################
+    # Main outcome 3: innovation
+    ########################################################
+    
+    product_innovation = case_when(
+      clean_negative_codes(h1) == 1 ~ 1,
+      clean_negative_codes(h1) == 2 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    
+    process_innovation = case_when(
+      clean_negative_codes(h5) == 1 ~ 1,
+      clean_negative_codes(h5) == 2 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    
+    any_innovation = case_when(
+      product_innovation == 1 | process_innovation == 1 ~ 1,
+      product_innovation == 0 & process_innovation == 0 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    
+    ########################################################
+    # Main outcome 4: capacity utilization
+    ########################################################
+    
+    capacity_utilization = clean_negative_codes(f1),
+    capacity_utilization = ifelse(
+      capacity_utilization < 0 | capacity_utilization > 100,
+      NA,
+      capacity_utilization
+    ),
     
     ########################################################
     # Competition variables
@@ -147,93 +213,176 @@ data <- raw_data %>%
       TRUE ~ NA_real_
     ),
     
-    high_competition = case_when(
-      competition_intensity >= 2 ~ 1,
-      competition_intensity < 2  ~ 0,
-      TRUE ~ NA_real_
-    ),
-    
     informal_competition = case_when(
       clean_negative_codes(e11) == 1 ~ 1,
       clean_negative_codes(e11) == 2 ~ 0,
       TRUE ~ NA_real_
     ),
     
-    ########################################################
-    # Market power
-    ########################################################
+    informal_obstacle = clean_negative_codes(e30),
+    informal_obstacle = ifelse(informal_obstacle > 4, NA, informal_obstacle),
     
-    market_power = case_when(
-      clean_negative_codes(e33) == 1 ~ 1,
-      clean_negative_codes(e33) == 2 ~ 0,
-      TRUE ~ NA_real_
+    ########################################################
+    # Competition Pressure Index
+    ########################################################
+    # This index deliberately uses only competition-related variables:
+    # 1. number of competitors
+    # 2. whether the firm competes with informal firms
+    # 3. how much informal competitors are an obstacle
+    #
+    # It avoids exporter and foreign ownership because those variables may
+    # capture firm sophistication rather than competition.
+    
+    competition_pressure_index = rowMeans(
+      cbind(
+        z_score(competition_intensity),
+        z_score(informal_competition),
+        z_score(informal_obstacle)
+      ),
+      na.rm = FALSE
     ),
     
-    ########################################################
-    # Pricing behaviour
-    ########################################################
+    competition_pressure_index = z_score(competition_pressure_index),
     
-    price_increase = case_when(
-      clean_negative_codes(e4) == 1 ~ 1,
-      clean_negative_codes(e4) == 2 ~ 0,
-      TRUE ~ NA_real_
+    competition_pressure_tercile = ifelse(
+      !is.na(competition_pressure_index),
+      ntile(competition_pressure_index, 3),
+      NA_integer_
     ),
     
-    country_year = interaction(country_id, year, drop = TRUE)
-  )
-
-############################################################
-# 6. Additional robustness variables, if available
-############################################################
-
-data <- data %>%
-  mutate(
-    competition_increased = case_when(
-      "e32" %in% names(.) & clean_negative_codes(e32) == 1 ~ 1,
-      "e32" %in% names(.) & clean_negative_codes(e32) %in% c(2, 3) ~ 0,
-      TRUE ~ NA_real_
-    ),
-    
-    foreign_technology = case_when(
-      "e6" %in% names(.) & clean_negative_codes(e6) == 1 ~ 1,
-      "e6" %in% names(.) & clean_negative_codes(e6) == 2 ~ 0,
-      TRUE ~ NA_real_
+    competition_pressure_quartile = ifelse(
+      !is.na(competition_pressure_index),
+      ntile(competition_pressure_index, 4),
+      NA_integer_
     )
   )
 
 ############################################################
-# 7. Final analysis sample
+# 5. Analysis samples
 ############################################################
 
-analysis <- data %>%
+# Main outcome: log sales
+analysis_sales <- data %>%
   filter(
-    !is.na(market_power),
-    !is.na(price_increase),
-    !is.na(competition_intensity),
-    !is.na(informal_competition),
+    !is.na(ln_sales),
+    !is.na(competition_pressure_index),
     !is.na(ln_employees),
-    !is.na(manager_experience),
-    !is.na(firm_age),
     !is.na(size_cat),
-    !is.na(industry_fe),
-    !is.na(country_year),
+    !is.na(country_id),
+    !is.na(sector_strata),
     !is.na(weight),
     weight > 0
   )
 
-write_csv(analysis, here("results", "clean_analysis_data.csv"))
+# Full controls for log sales
+analysis_sales_full <- data %>%
+  filter(
+    !is.na(ln_sales),
+    !is.na(competition_pressure_index),
+    !is.na(ln_employees),
+    !is.na(size_cat),
+    !is.na(multi_establishment),
+    !is.na(firm_age),
+    !is.na(manager_experience),
+    !is.na(country_id),
+    !is.na(sector_strata),
+    !is.na(weight),
+    weight > 0
+  )
+
+# Productivity outcome
+analysis_productivity <- data %>%
+  filter(
+    !is.na(ln_sales_per_worker),
+    !is.na(competition_pressure_index),
+    !is.na(ln_employees),
+    !is.na(size_cat),
+    !is.na(country_id),
+    !is.na(sector_strata),
+    !is.na(weight),
+    weight > 0
+  )
+
+# Export participation outcome
+analysis_export <- data %>%
+  filter(
+    !is.na(exporter),
+    !is.na(competition_pressure_index),
+    !is.na(ln_employees),
+    !is.na(size_cat),
+    !is.na(country_id),
+    !is.na(sector_strata),
+    !is.na(weight),
+    weight > 0
+  )
+
+# Innovation outcome
+analysis_innovation <- data %>%
+  filter(
+    !is.na(any_innovation),
+    !is.na(competition_pressure_index),
+    !is.na(ln_employees),
+    !is.na(size_cat),
+    !is.na(country_id),
+    !is.na(sector_strata),
+    !is.na(weight),
+    weight > 0
+  )
+
+# Capacity utilization outcome
+analysis_capacity <- data %>%
+  filter(
+    !is.na(capacity_utilization),
+    !is.na(competition_pressure_index),
+    !is.na(ln_employees),
+    !is.na(size_cat),
+    !is.na(country_id),
+    !is.na(sector_strata),
+    !is.na(weight),
+    weight > 0
+  )
+
+# Component robustness sample
+analysis_components <- data %>%
+  filter(
+    !is.na(ln_sales),
+    !is.na(competition_intensity),
+    !is.na(informal_competition),
+    !is.na(informal_obstacle),
+    !is.na(ln_employees),
+    !is.na(size_cat),
+    !is.na(multi_establishment),
+    !is.na(firm_age),
+    !is.na(manager_experience),
+    !is.na(country_id),
+    !is.na(sector_strata),
+    !is.na(weight),
+    weight > 0
+  )
+
+cat("Sales sample:", nrow(analysis_sales), "\n")
+cat("Full-control sales sample:", nrow(analysis_sales_full), "\n")
+cat("Productivity sample:", nrow(analysis_productivity), "\n")
+cat("Export sample:", nrow(analysis_export), "\n")
+cat("Innovation sample:", nrow(analysis_innovation), "\n")
+cat("Capacity utilization sample:", nrow(analysis_capacity), "\n")
+cat("Component robustness sample:", nrow(analysis_components), "\n")
+
+write_csv(analysis_sales, here("results", "clean_analysis_sales.csv"))
+write_csv(analysis_sales_full, here("results", "clean_analysis_sales_full.csv"))
 
 ############################################################
-# 8. Descriptive statistics
+# 6. Descriptive statistics
 ############################################################
 
-desc_continuous <- analysis %>%
+desc_continuous <- analysis_sales %>%
   select(
-    competition_intensity,
-    market_power,
-    price_increase,
-    informal_competition,
+    ln_sales,
     ln_employees,
+    competition_pressure_index,
+    competition_intensity,
+    informal_competition,
+    informal_obstacle,
     firm_age,
     manager_experience
   )
@@ -244,41 +393,42 @@ datasummary_skim(
 )
 
 ############################################################
-# 9. Distribution tables
+# 7. Distribution tables
 ############################################################
 
-tab_competitors <- analysis %>%
+tab_index <- analysis_sales %>%
+  count(competition_pressure_tercile) %>%
+  mutate(share = 100 * n / sum(n))
+
+tab_competitors <- analysis_sales %>%
   count(competitors_cat) %>%
   mutate(share = 100 * n / sum(n))
 
-tab_market_power <- analysis %>%
-  count(market_power) %>%
+tab_informal <- analysis_sales %>%
+  count(informal_competition) %>%
   mutate(
-    market_power = ifelse(market_power == 1, "Yes", "No"),
+    informal_competition = ifelse(
+      informal_competition == 1,
+      "Competes with informal firms",
+      "Does not compete with informal firms"
+    ),
     share = 100 * n / sum(n)
   )
 
-tab_price <- analysis %>%
-  count(price_increase) %>%
-  mutate(
-    price_increase = ifelse(price_increase == 1, "Price increased", "No price increase"),
-    share = 100 * n / sum(n)
-  )
-
-tab_size <- analysis %>%
+tab_size <- analysis_sales %>%
   count(size_cat) %>%
   mutate(share = 100 * n / sum(n))
 
 doc <- read_docx()
 
-doc <- body_add_par(doc, "Table A1. Distribution by number of competitors", style = "heading 1")
+doc <- body_add_par(doc, "Table A1. Competition pressure terciles", style = "heading 1")
+doc <- body_add_flextable(doc, autofit(flextable(tab_index)))
+
+doc <- body_add_par(doc, "Table A2. Distribution by number of competitors", style = "heading 1")
 doc <- body_add_flextable(doc, autofit(flextable(tab_competitors)))
 
-doc <- body_add_par(doc, "Table A2. Market power", style = "heading 1")
-doc <- body_add_flextable(doc, autofit(flextable(tab_market_power)))
-
-doc <- body_add_par(doc, "Table A3. Pricing behaviour", style = "heading 1")
-doc <- body_add_flextable(doc, autofit(flextable(tab_price)))
+doc <- body_add_par(doc, "Table A3. Informal competition", style = "heading 1")
+doc <- body_add_flextable(doc, autofit(flextable(tab_informal)))
 
 doc <- body_add_par(doc, "Table A4. Firm size", style = "heading 1")
 doc <- body_add_flextable(doc, autofit(flextable(tab_size)))
@@ -286,421 +436,362 @@ doc <- body_add_flextable(doc, autofit(flextable(tab_size)))
 print(doc, target = here("results", "table_02_distribution_tables.docx"))
 
 ############################################################
-# 10. Graphs
+# 8. Graphs
 ############################################################
 
-fig_market_power <- analysis %>%
-  group_by(competitors_cat) %>%
-  summarise(
-    mean_market_power = mean(market_power, na.rm = TRUE),
-    n = n(),
-    .groups = "drop"
-  ) %>%
-  ggplot(aes(x = competitors_cat, y = mean_market_power)) +
-  geom_col() +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+fig_index_distribution <- ggplot(
+  analysis_sales,
+  aes(x = competition_pressure_index)
+) +
+  geom_histogram(bins = 40) +
   labs(
-    x = "Number of competitors",
-    y = "Share of firms with market power",
-    title = "Market power by competitive environment"
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 35, hjust = 1))
-
-ggsave(
-  here("results", "fig_01_market_power_by_competition.png"),
-  fig_market_power,
-  width = 7,
-  height = 4,
-  dpi = 300
-)
-
-fig_price_market_power <- analysis %>%
-  group_by(market_power) %>%
-  summarise(
-    mean_price_increase = mean(price_increase, na.rm = TRUE),
-    n = n(),
-    .groups = "drop"
-  ) %>%
-  mutate(market_power = ifelse(market_power == 1, "Market power", "No market power")) %>%
-  ggplot(aes(x = market_power, y = mean_price_increase)) +
-  geom_col() +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
-  labs(
-    x = "",
-    y = "Share of firms increasing prices",
-    title = "Pricing behaviour by market power"
+    x = "Competition pressure index",
+    y = "Number of firms",
+    title = "Distribution of competition pressure index"
   ) +
   theme_minimal()
 
 ggsave(
-  here("results", "fig_02_price_increase_by_market_power.png"),
-  fig_price_market_power,
-  width = 6,
+  here("results", "fig_01_competition_index_distribution.png"),
+  fig_index_distribution,
+  width = 7,
   height = 4,
   dpi = 300
 )
 
-fig_price_competition <- analysis %>%
-  group_by(competitors_cat) %>%
+fig_sales_index <- analysis_sales %>%
+  group_by(competition_pressure_tercile) %>%
   summarise(
-    mean_price_increase = mean(price_increase, na.rm = TRUE),
+    mean_ln_sales = mean(ln_sales, na.rm = TRUE),
     n = n(),
     .groups = "drop"
   ) %>%
-  ggplot(aes(x = competitors_cat, y = mean_price_increase)) +
+  ggplot(aes(x = factor(competition_pressure_tercile), y = mean_ln_sales)) +
   geom_col() +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
   labs(
-    x = "Number of competitors",
-    y = "Share of firms increasing prices",
-    title = "Price increases by competitive environment"
+    x = "Competition pressure tercile",
+    y = "Average log sales",
+    title = "Average firm sales by competition pressure"
   ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+  theme_minimal()
 
 ggsave(
-  here("results", "fig_03_price_increase_by_competition.png"),
-  fig_price_competition,
+  here("results", "fig_02_sales_by_competition_pressure.png"),
+  fig_sales_index,
   width = 7,
   height = 4,
   dpi = 300
 )
 
-corr_data <- analysis %>%
-  select(
-    competition_intensity,
-    informal_competition,
-    market_power,
-    price_increase,
-    ln_employees,
-    firm_age,
-    manager_experience
-  )
-
-fig_corr <- ggcorr(corr_data, label = TRUE)
-
-ggsave(
-  here("results", "fig_04_correlation_matrix.png"),
-  fig_corr,
-  width = 7,
-  height = 6,
-  dpi = 300
-)
-
-############################################################
-# 11. Econometric models
-############################################################
-
-############################################################
-# 11.1 Competition and market power
-############################################################
-
-mp_lpm <- feols(
-  market_power ~ competition_intensity + informal_competition +
-    ln_employees + firm_age + manager_experience +
-    i(size_cat) + multi_establishment |
-    country_year + industry_fe,
-  data = analysis,
-  weights = ~ weight,
-  cluster = ~ country_id
-)
-
-mp_probit <- glm(
-  market_power ~ competition_intensity + informal_competition +
-    ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment +
-    country_year + industry_fe,
-  data = analysis,
-  weights = weight,
-  family = binomial(link = "probit")
-)
-
-mp_logit <- glm(
-  market_power ~ competition_intensity + informal_competition +
-    ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment +
-    country_year + industry_fe,
-  data = analysis,
-  weights = weight,
-  family = binomial(link = "logit")
-)
-
-mp_probit_vcov <- vcovCL(mp_probit, cluster = analysis$country_id)
-mp_logit_vcov  <- vcovCL(mp_logit, cluster = analysis$country_id)
-
-modelsummary(
-  list(
-    "LPM" = mp_lpm,
-    "Probit" = mp_probit,
-    "Logit" = mp_logit
-  ),
-  vcov = list(
-    NULL,
-    mp_probit_vcov,
-    mp_logit_vcov
-  ),
-  output = here("results", "table_03_competition_market_power_lpm_probit_logit.docx"),
-  stars = TRUE,
-  coef_omit = "country_year|industry_fe",
-  gof_omit = "IC|Log|RMSE",
-  notes = "LPM, Probit and Logit models. Survey weights applied. Probit and Logit standard errors clustered at country level. Country-year and industry fixed effects included but omitted from the table."
-)
-
-############################################################
-# 11.2 Competition, market power and price increases
-############################################################
-
-price_lpm <- feols(
-  price_increase ~ competition_intensity + informal_competition +
-    market_power + ln_employees + firm_age + manager_experience +
-    i(size_cat) + multi_establishment |
-    country_year + industry_fe,
-  data = analysis,
-  weights = ~ weight,
-  cluster = ~ country_id
-)
-
-price_probit <- glm(
-  price_increase ~ competition_intensity + informal_competition +
-    market_power + ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment +
-    country_year + industry_fe,
-  data = analysis,
-  weights = weight,
-  family = binomial(link = "probit")
-)
-
-price_logit <- glm(
-  price_increase ~ competition_intensity + informal_competition +
-    market_power + ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment +
-    country_year + industry_fe,
-  data = analysis,
-  weights = weight,
-  family = binomial(link = "logit")
-)
-
-price_probit_vcov <- vcovCL(price_probit, cluster = analysis$country_id)
-price_logit_vcov  <- vcovCL(price_logit, cluster = analysis$country_id)
-
-modelsummary(
-  list(
-    "LPM" = price_lpm,
-    "Probit" = price_probit,
-    "Logit" = price_logit
-  ),
-  vcov = list(
-    NULL,
-    price_probit_vcov,
-    price_logit_vcov
-  ),
-  output = here("results", "table_04_price_behaviour_lpm_probit_logit.docx"),
-  stars = TRUE,
-  coef_omit = "country_year|industry_fe",
-  gof_omit = "IC|Log|RMSE",
-  notes = "LPM, Probit and Logit models. Survey weights applied. Probit and Logit standard errors clustered at country level. Country-year and industry fixed effects included but omitted from the table."
-)
-
-############################################################
-# 12. Average marginal effects
-############################################################
-
-mp_probit_ame <- avg_slopes(
-  mp_probit,
-  vcov = mp_probit_vcov
-)
-
-mp_logit_ame <- avg_slopes(
-  mp_logit,
-  vcov = mp_logit_vcov
-)
-
-price_probit_ame <- avg_slopes(
-  price_probit,
-  vcov = price_probit_vcov
-)
-
-price_logit_ame <- avg_slopes(
-  price_logit,
-  vcov = price_logit_vcov
-)
-
-modelsummary(
-  list(
-    "Market power: Probit AME" = mp_probit_ame,
-    "Market power: Logit AME" = mp_logit_ame,
-    "Price increase: Probit AME" = price_probit_ame,
-    "Price increase: Logit AME" = price_logit_ame
-  ),
-  output = here("results", "table_05_average_marginal_effects.docx"),
-  stars = TRUE,
-  notes = "Average marginal effects from Probit and Logit models."
-)
-
-############################################################
-# 13. Robustness checks for Probit and Logit
-############################################################
-
-mp_probit_robust <- glm(
-  market_power ~ competition_intensity + informal_competition +
-    ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment +
-    region_id + factor(year) + industry_fe,
-  data = analysis,
-  weights = weight,
-  family = binomial(link = "probit")
-)
-
-mp_logit_robust <- glm(
-  market_power ~ competition_intensity + informal_competition +
-    ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment +
-    region_id + factor(year) + industry_fe,
-  data = analysis,
-  weights = weight,
-  family = binomial(link = "logit")
-)
-
-price_probit_robust <- glm(
-  price_increase ~ competition_intensity + informal_competition +
-    market_power + ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment +
-    region_id + factor(year) + industry_fe,
-  data = analysis,
-  weights = weight,
-  family = binomial(link = "probit")
-)
-
-price_logit_robust <- glm(
-  price_increase ~ competition_intensity + informal_competition +
-    market_power + ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment +
-    region_id + factor(year) + industry_fe,
-  data = analysis,
-  weights = weight,
-  family = binomial(link = "logit")
-)
-
-mp_probit_robust_vcov    <- vcovCL(mp_probit_robust, cluster = analysis$country_id)
-mp_logit_robust_vcov     <- vcovCL(mp_logit_robust, cluster = analysis$country_id)
-price_probit_robust_vcov <- vcovCL(price_probit_robust, cluster = analysis$country_id)
-price_logit_robust_vcov  <- vcovCL(price_logit_robust, cluster = analysis$country_id)
-
-modelsummary(
-  list(
-    "MP Probit robust" = mp_probit_robust,
-    "MP Logit robust" = mp_logit_robust,
-    "Price Probit robust" = price_probit_robust,
-    "Price Logit robust" = price_logit_robust
-  ),
-  vcov = list(
-    mp_probit_robust_vcov,
-    mp_logit_robust_vcov,
-    price_probit_robust_vcov,
-    price_logit_robust_vcov
-  ),
-  output = here("results", "table_06_probit_logit_robustness.docx"),
-  stars = TRUE,
-  coef_omit = "region_id|factor\\(year\\)|industry_fe",
-  gof_omit = "IC|Log|RMSE",
-  notes = "Robustness specifications for Probit and Logit using region, year and industry fixed effects."
-)
-
-############################################################
-# 14. Predicted probabilities
-############################################################
-
-pred_data <- analysis %>%
-  group_by(competitors_cat) %>%
+fig_productivity_index <- analysis_productivity %>%
+  group_by(competition_pressure_tercile) %>%
   summarise(
-    competition_intensity = mean(competition_intensity, na.rm = TRUE),
-    informal_competition = mean(informal_competition, na.rm = TRUE),
-    market_power = mean(market_power, na.rm = TRUE),
-    ln_employees = mean(ln_employees, na.rm = TRUE),
-    firm_age = mean(firm_age, na.rm = TRUE),
-    manager_experience = mean(manager_experience, na.rm = TRUE),
-    size_cat = names(sort(table(analysis$size_cat), decreasing = TRUE))[1],
-    multi_establishment = mean(multi_establishment, na.rm = TRUE),
-    country_year = names(sort(table(analysis$country_year), decreasing = TRUE))[1],
-    industry_fe = names(sort(table(analysis$industry_fe), decreasing = TRUE))[1],
+    mean_ln_sales_per_worker = mean(ln_sales_per_worker, na.rm = TRUE),
+    n = n(),
     .groups = "drop"
-  )
-
-pred_data$size_cat <- factor(pred_data$size_cat, levels = levels(analysis$size_cat))
-pred_data$country_year <- factor(pred_data$country_year, levels = levels(analysis$country_year))
-pred_data$industry_fe <- factor(pred_data$industry_fe, levels = levels(analysis$industry_fe))
-
-pred_data$pred_market_power_probit <- predict(
-  mp_probit,
-  newdata = pred_data,
-  type = "response"
-)
-
-pred_data$pred_price_increase_probit <- predict(
-  price_probit,
-  newdata = pred_data,
-  type = "response"
-)
-
-write_csv(
-  pred_data,
-  here("results", "predicted_probabilities_by_competition.csv")
-)
-
-fig_pred_mp <- ggplot(
-  pred_data,
-  aes(x = competitors_cat, y = pred_market_power_probit)
-) +
+  ) %>%
+  ggplot(aes(x = factor(competition_pressure_tercile), y = mean_ln_sales_per_worker)) +
   geom_col() +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
   labs(
-    x = "Number of competitors",
-    y = "Predicted probability of market power",
-    title = "Predicted market power by competition: Probit"
+    x = "Competition pressure tercile",
+    y = "Average log sales per worker",
+    title = "Average sales per worker by competition pressure"
   ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+  theme_minimal()
 
 ggsave(
-  here("results", "fig_05_predicted_market_power_probit.png"),
-  fig_pred_mp,
-  width = 7,
-  height = 4,
-  dpi = 300
-)
-
-fig_pred_price <- ggplot(
-  pred_data,
-  aes(x = competitors_cat, y = pred_price_increase_probit)
-) +
-  geom_col() +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
-  labs(
-    x = "Number of competitors",
-    y = "Predicted probability of price increase",
-    title = "Predicted price increase by competition: Probit"
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 35, hjust = 1))
-
-ggsave(
-  here("results", "fig_06_predicted_price_increase_probit.png"),
-  fig_pred_price,
+  here("results", "fig_03_productivity_by_competition_pressure.png"),
+  fig_productivity_index,
   width = 7,
   height = 4,
   dpi = 300
 )
 
 ############################################################
-# 15. Diagnostics
+# 9. Main sales models
+############################################################
+# Main specification:
+# country fixed effects + sector controls.
+# We do NOT use industry fixed effects as the main specification,
+# because competition is itself sectoral.
+############################################################
+
+sales_main_1 <- feols(
+  ln_sales ~ competition_pressure_index +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+sales_main_2 <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + i(size_cat) +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+sales_main_3 <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales_full,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+sales_main_4 <- feols(
+  ln_sales ~ i(competition_pressure_tercile, ref = 1) +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales_full,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+modelsummary(
+  list(
+    "Index baseline" = sales_main_1,
+    "Index + size" = sales_main_2,
+    "Index full controls" = sales_main_3,
+    "Index terciles" = sales_main_4
+  ),
+  output = here("results", "table_03_main_sales_results.docx"),
+  stars = TRUE,
+  coef_omit = "sector_strata|country_id",
+  gof_omit = "IC|Log|RMSE",
+  notes = "Outcome: log sales. Main models use country fixed effects and sector controls. Survey weights applied. Standard errors clustered at country level."
+)
+
+############################################################
+# 10. Alternative outcomes
+############################################################
+
+############################################################
+# 10.1 Productivity: log sales per worker
+############################################################
+
+productivity_model <- feols(
+  ln_sales_per_worker ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    i(sector_strata) |
+    country_id,
+  data = analysis_productivity,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+############################################################
+# 10.2 Capacity utilization
+############################################################
+
+capacity_model <- feols(
+  capacity_utilization ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    i(sector_strata) |
+    country_id,
+  data = analysis_capacity,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+############################################################
+# 10.3 Export participation: LPM
+############################################################
+
+export_lpm <- feols(
+  exporter ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    i(sector_strata) |
+    country_id,
+  data = analysis_export,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+############################################################
+# 10.4 Innovation: LPM
+############################################################
+
+innovation_lpm <- feols(
+  any_innovation ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    i(sector_strata) |
+    country_id,
+  data = analysis_innovation,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+modelsummary(
+  list(
+    "Productivity" = productivity_model,
+    "Capacity utilization" = capacity_model,
+    "Export participation" = export_lpm,
+    "Innovation" = innovation_lpm
+  ),
+  output = here("results", "table_04_alternative_outcomes.docx"),
+  stars = TRUE,
+  coef_omit = "sector_strata|country_id",
+  gof_omit = "IC|Log|RMSE",
+  notes = "Alternative outcomes. Export participation and innovation are estimated as Linear Probability Models. All models use country fixed effects and sector controls."
+)
+
+############################################################
+# 11. Robustness checks
+############################################################
+
+############################################################
+# 11.1 Components instead of index
+############################################################
+
+sales_components <- feols(
+  ln_sales ~ competition_intensity + informal_competition + informal_obstacle +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id,
+  data = analysis_components,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+############################################################
+# 11.2 More demanding fixed effects: country-year only
+############################################################
+
+sales_country_year <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id^year,
+  data = analysis_sales_full,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+############################################################
+# 11.3 Very demanding robustness: country-year + industry FE
+############################################################
+
+sales_strict_fe <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience |
+    country_id^year + industry_fe,
+  data = analysis_sales_full,
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+############################################################
+# 11.4 Unweighted model
+############################################################
+
+sales_unweighted <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales_full,
+  cluster = ~ country_id
+)
+
+modelsummary(
+  list(
+    "Components" = sales_components,
+    "Country-year FE" = sales_country_year,
+    "Strict FE" = sales_strict_fe,
+    "Unweighted" = sales_unweighted
+  ),
+  output = here("results", "table_05_robustness_checks.docx"),
+  stars = TRUE,
+  coef_omit = "sector_strata|country_id|year|industry_fe",
+  gof_omit = "IC|Log|RMSE",
+  notes = "Robustness checks. The strict FE model includes country-year and industry fixed effects and is expected to absorb much of the sectoral competition variation."
+)
+
+############################################################
+# 12. Heterogeneity analysis
+############################################################
+
+sales_manufacturing <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales_full %>% filter(sector_main == "Manufacturing"),
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+sales_services <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales_full %>% filter(sector_main == "Services"),
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+sales_small <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales_full %>% filter(size_cat == "Small"),
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+sales_medium_large <- feols(
+  ln_sales ~ competition_pressure_index +
+    ln_employees + i(size_cat) + multi_establishment +
+    firm_age + manager_experience +
+    i(sector_strata) |
+    country_id,
+  data = analysis_sales_full %>% filter(size_cat != "Small"),
+  weights = ~ weight,
+  cluster = ~ country_id
+)
+
+modelsummary(
+  list(
+    "Manufacturing" = sales_manufacturing,
+    "Services" = sales_services,
+    "Small firms" = sales_small,
+    "Medium/Large firms" = sales_medium_large
+  ),
+  output = here("results", "table_06_heterogeneity_results.docx"),
+  stars = TRUE,
+  coef_omit = "sector_strata|country_id",
+  gof_omit = "IC|Log|RMSE",
+  notes = "Heterogeneity analysis by sector and firm size. Outcome: log sales."
+)
+
+############################################################
+# 13. Diagnostics
 ############################################################
 
 diagnostic_lm <- lm(
-  price_increase ~ competition_intensity + informal_competition +
-    market_power + ln_employees + firm_age + manager_experience +
-    size_cat + multi_establishment,
-  data = analysis
+  ln_sales ~ competition_pressure_index +
+    ln_employees + size_cat + multi_establishment +
+    firm_age + manager_experience + sector_strata,
+  data = analysis_sales_full
 )
 
 vif_results <- car::vif(diagnostic_lm)
@@ -710,23 +801,23 @@ capture.output(
   file = here("results", "diagnostic_vif_results.txt")
 )
 
-analysis$residual_price_model <- resid(price_lpm)
+analysis_sales_full$residual_sales_model <- resid(sales_main_3)
 
 fig_residuals <- ggplot(
-  analysis,
-  aes(x = fitted(price_lpm), y = residual_price_model)
+  analysis_sales_full,
+  aes(x = fitted(sales_main_3), y = residual_sales_model)
 ) +
   geom_point(alpha = 0.15) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   labs(
     x = "Fitted values",
     y = "Residuals",
-    title = "Residual plot: pricing behaviour LPM"
+    title = "Residual plot: log sales model"
   ) +
   theme_minimal()
 
 ggsave(
-  here("results", "fig_07_residual_plot_price_model.png"),
+  here("results", "fig_04_residual_plot_sales_model.png"),
   fig_residuals,
   width = 7,
   height = 4,
@@ -734,29 +825,31 @@ ggsave(
 )
 
 ############################################################
-# 16. Export summary notes
+# 14. Export summary notes
 ############################################################
 
 summary_text <- paste0(
-  "Competition, Market Power, and Pricing Behaviour in Firms\n\n",
-  "Number of observations in final analysis sample: ", nrow(analysis), "\n",
-  "Number of countries/economies: ", n_distinct(analysis$country_id), "\n",
-  "Number of country-year cells: ", n_distinct(analysis$country_year), "\n\n",
-  "Models estimated:\n",
-  "1. Linear Probability Model (LPM)\n",
-  "2. Probit model\n",
-  "3. Logit model\n\n",
-  "Main outcomes:\n",
-  "1. market_power: firm reports ability to increase prices more than competitors without losing customers.\n",
-  "2. price_increase: firm reports price increase in the last fiscal year.\n\n",
-  "Main competition measures:\n",
-  "1. competition_intensity from e2.\n",
-  "2. informal_competition from e11.\n\n",
+  "Competitive Pressure and Firm Performance\n\n",
+  "Main idea:\n",
+  "The revised competition index uses only competition-related variables: ",
+  "number of competitors, whether the firm competes with informal firms, ",
+  "and how much informal competitors are perceived as an obstacle.\n\n",
+  "Sample sizes:\n",
+  "Sales sample: ", nrow(analysis_sales), "\n",
+  "Full-control sales sample: ", nrow(analysis_sales_full), "\n",
+  "Productivity sample: ", nrow(analysis_productivity), "\n",
+  "Export participation sample: ", nrow(analysis_export), "\n",
+  "Innovation sample: ", nrow(analysis_innovation), "\n",
+  "Capacity utilization sample: ", nrow(analysis_capacity), "\n\n",
+  "Empirical strategy:\n",
+  "The main outcome is log sales. Additional outcomes are log sales per worker, ",
+  "capacity utilization, export participation, and innovation. ",
+  "The main specification uses country fixed effects and sector controls, ",
+  "because competition is partly sectoral. More demanding fixed effects are treated as robustness checks.\n\n",
   "Identification warning:\n",
-  "Competition, market power and pricing behaviour may be endogenous. ",
-  "More productive firms may choose different markets, survive under stronger competition, ",
-  "or have unobserved quality that affects both market power and pricing. ",
-  "Therefore, the results should be interpreted as conditional associations, not strict causal effects.\n"
+  "Competition is not randomly assigned. More productive firms may select into more competitive markets, ",
+  "and unobserved product quality may affect both competition exposure and firm performance. ",
+  "Therefore, results should be interpreted as conditional associations rather than strict causal effects.\n"
 )
 
 writeLines(

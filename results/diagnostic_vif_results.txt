@@ -1,0 +1,7 @@
+                               GVIF Df GVIF^(1/(2*Df))
+competition_pressure_index 1.064842  1        1.031912
+ln_employees               1.218579  1        1.103893
+multi_establishment        1.085910  1        1.042070
+firm_age                   1.345373  1        1.159902
+manager_experience         1.217139  1        1.103240
+sector_strata              1.219647 20        1.004976

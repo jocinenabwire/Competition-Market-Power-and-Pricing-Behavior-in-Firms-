@@ -1,0 +1,25 @@
+Competition Pressure and Relative Firm Productivity
+
+Main outcome:
+The main dependent variable is relative log sales per worker, standardized within country-year-industry cells. This measures a firm's productivity relative to comparable firms operating in the same macro-sectoral environment.
+
+Competition index:
+The competition pressure index uses number of competitors, informal competition, and perceived obstacle from informal competitors.
+
+Sample sizes:
+Main relative productivity sample: 7752
+Raw productivity robustness sample: 9968
+Country-sector relative productivity sample: 10206
+Relative sales robustness sample: 7754
+Component robustness sample: 7752
+Export sample: 16713
+Innovation sample: 5672
+Capacity sample: 16143
+Price increase sample: 6709
+
+Empirical strategy:
+The main specification uses country fixed effects and sector controls. More demanding fixed effects are reported as robustness checks. Firm size categories are excluded from the main models because log employment controls for scale.
+
+Identification warning:
+Competition is not randomly assigned. More productive firms may select into more competitive markets, and unobserved product quality may affect both competition exposure and relative productivity. Therefore, results should be interpreted as conditional associations rather than strict causal effects.
+
