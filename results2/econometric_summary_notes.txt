@@ -1,0 +1,20 @@
+High Competition and Firm Performance
+
+Main idea:
+The main competition variable is a binary indicator equal to one if the firm reports more than five competitors, and zero if the firm reports zero to five competitors.
+
+Sample sizes:
+Sales sample: 24103
+Full-control sales sample: 10672
+Productivity sample: 24103
+Export participation sample: 26378
+Innovation sample: 11588
+Capacity utilization sample: 25693
+Price increase sample: 14091
+
+Empirical strategy:
+The main outcome is log sales. The main specification uses country fixed effects and sector controls, because competition is partly sectoral. More demanding fixed effects are treated as robustness checks. Firm size categories are excluded from regressions because log employment controls for firm scale.
+
+Identification warning:
+Competition is not randomly assigned. More productive firms may select into more competitive markets, and unobserved product quality may affect both competition exposure and firm performance. Therefore, results should be interpreted as conditional associations rather than strict causal effects.
+

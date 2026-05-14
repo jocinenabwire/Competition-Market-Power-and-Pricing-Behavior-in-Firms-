@@ -1,0 +1,7 @@
+                        GVIF Df GVIF^(1/(2*Df))
+high_competition    1.042819  1        1.021185
+ln_employees        1.220945  1        1.104964
+multi_establishment 1.088535  1        1.043329
+firm_age            1.311170  1        1.145063
+manager_experience  1.175691  1        1.084293
+sector_strata       1.173427 20        1.004006
