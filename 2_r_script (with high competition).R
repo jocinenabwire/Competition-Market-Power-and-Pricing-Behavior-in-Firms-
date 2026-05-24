@@ -57,6 +57,15 @@ winsorise <- function(x, probs = c(0.01, 0.99)) {
   return(x)
 }
 
+# Fixed-bound winsorisation for sales variables only.
+# Values below 1,000 are set to 1,000.
+# Values above 10,000,000 are set to 10,000,000.
+winsorise_sales_bounds <- function(x, lower = 1000, upper = 10000000) {
+  x <- ifelse(x < lower, lower, x)
+  x <- ifelse(x > upper, upper, x)
+  return(x)
+}
+
 ############################################################
 # 4. Construct variables
 ############################################################
@@ -127,12 +136,11 @@ data <- raw_data %>%
     
     sales_total = clean_negative_codes(d2),
     sales_total = ifelse(sales_total <= 0, NA, sales_total),
-    sales_total = winsorise(sales_total),
+    sales_total = winsorise_sales_bounds(sales_total),
     ln_sales = log(sales_total),
     
     sales_per_worker = sales_total / employees,
     sales_per_worker = ifelse(sales_per_worker <= 0, NA, sales_per_worker),
-    sales_per_worker = winsorise(sales_per_worker),
     ln_sales_per_worker = log(sales_per_worker),
     
     ########################################################
@@ -802,6 +810,10 @@ summary_text <- paste0(
   "The main outcome is log sales. The main specification uses country fixed effects and sector controls, ",
   "because competition is partly sectoral. More demanding fixed effects are treated as robustness checks. ",
   "Firm size categories are excluded from regressions because log employment controls for firm scale.\n\n",
+  "Winsorisation note:\n",
+  "Sales variables are winsorised using fixed bounds: values below 1,000 are set to 1,000, ",
+  "and values above 10,000,000 are set to 10,000,000. This applies to total sales and sales per worker only. ",
+  "Firm age and manager experience continue to use percentile-based winsorisation.\n\n",
   "Identification warning:\n",
   "Competition is not randomly assigned. More productive firms may select into more competitive markets, ",
   "and unobserved product quality may affect both competition exposure and firm performance. ",

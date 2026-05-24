@@ -1,20 +1,23 @@
-High Competition and Firm Performance
+Competition and Firm Performance
 
-Main idea:
-The main competition variable is a binary indicator equal to one if the firm reports more than five competitors, and zero if the firm reports zero to five competitors.
+Main outcome:
+The main dependent variable is log sales per worker, used as a proxy for firm productivity.
+
+Competition measure:
+The main explanatory variable is competition_intensity, coded from 0 to 3 according to the number of competitors.
 
 Sample sizes:
-Sales sample: 24103
-Full-control sales sample: 10672
 Productivity sample: 24103
-Export participation sample: 26378
+Full productivity sample: 10672
+Sales robustness sample: 10672
+Export sample: 26254
 Innovation sample: 11588
-Capacity utilization sample: 25693
+Capacity utilization sample: 25580
 Price increase sample: 14091
 
 Empirical strategy:
-The main outcome is log sales. The main specification uses country fixed effects and sector controls, because competition is partly sectoral. More demanding fixed effects are treated as robustness checks. Firm size categories are excluded from regressions because log employment controls for firm scale.
+The main specification uses country fixed effects and sector controls. Firm size categories are excluded from regressions because log employment controls for firm scale. More demanding fixed effects are reported as robustness checks.
 
 Identification warning:
-Competition is not randomly assigned. More productive firms may select into more competitive markets, and unobserved product quality may affect both competition exposure and firm performance. Therefore, results should be interpreted as conditional associations rather than strict causal effects.
+Competition is not randomly assigned. More productive firms may select into more competitive markets, and unobserved product quality may affect both competition exposure and productivity. Therefore, results should be interpreted as conditional associations rather than strict causal effects.
 

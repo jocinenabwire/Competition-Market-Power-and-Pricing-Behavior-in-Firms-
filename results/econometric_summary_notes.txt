@@ -1,19 +1,18 @@
-High Competition and Firm Performance
+Competitive Pressure and Firm Performance
 
 Main idea:
-The main competition variable is a binary indicator equal to one if the firm reports more than five competitors, and zero if the firm reports zero to five competitors.
+The main competition variable is a PCA-based index using number of competitors, whether the firm competes with informal firms, and perceived obstacle from informal competitors.
 
 Sample sizes:
-Sales sample: 24103
-Full-control sales sample: 10672
-Productivity sample: 24103
-Export participation sample: 26378
-Innovation sample: 11588
-Capacity utilization sample: 25693
-Price increase sample: 14091
+Sales sample: 15235
+Full-control sales sample: 9968
+Productivity sample: 15235
+Export participation sample: 16829
+Innovation sample: 5672
+Capacity utilization sample: 16248
 
 Empirical strategy:
-The main outcome is log sales. The main specification uses country fixed effects and sector controls, because competition is partly sectoral. More demanding fixed effects are treated as robustness checks.
+The main outcome is log sales. Additional outcomes are log sales per worker, capacity utilization, export participation, and innovation. The main specification uses country fixed effects and sector controls, because competition is partly sectoral. More demanding fixed effects are treated as robustness checks.
 
 Identification warning:
 Competition is not randomly assigned. More productive firms may select into more competitive markets, and unobserved product quality may affect both competition exposure and firm performance. Therefore, results should be interpreted as conditional associations rather than strict causal effects.
