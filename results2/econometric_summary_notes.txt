@@ -1,23 +1,25 @@
-Competition and Firm Performance
+High Competition and Firm Performance
 
-Main outcome:
-The main dependent variable is log sales per worker, used as a proxy for firm productivity.
-
-Competition measure:
-The main explanatory variable is competition_intensity, coded from 0 to 3 according to the number of competitors.
+Main idea:
+The main competition variable is a binary indicator equal to one if the firm reports more than five competitors, and zero if the firm reports zero to five competitors.
 
 Sample sizes:
+Sales sample: 24103
+Full-control sales sample: 10672
 Productivity sample: 24103
-Full productivity sample: 10672
-Sales robustness sample: 10672
-Export sample: 26254
-Innovation sample: 11588
-Capacity utilization sample: 25580
+Full-control productivity sample: 10672
+Export participation sample: 26378
 Price increase sample: 14091
 
 Empirical strategy:
-The main specification uses country fixed effects and sector controls. Firm size categories are excluded from regressions because log employment controls for firm scale. More demanding fixed effects are reported as robustness checks.
+The main outcome is log sales. The main explanatory variable is high competition. The baseline model controls for sector and country fixed effects. Additional specifications include log employment, multi-establishment status, firm age and manager experience. Informal competition is excluded from the main regression table but retained in the robustness component model.
+
+Winsorisation note:
+Sales are winsorised using fixed bounds: values below 1,000 are set to 1,000, and values above 1,000,000 are set to 1,000,000. Sales per worker is computed from the winsorised sales variable and is not winsorised again.
+
+Alternative outcomes note:
+The alternative outcome table reports productivity, export participation and price increase. Capacity utilization and innovation are excluded from the main alternative outcome table.
 
 Identification warning:
-Competition is not randomly assigned. More productive firms may select into more competitive markets, and unobserved product quality may affect both competition exposure and productivity. Therefore, results should be interpreted as conditional associations rather than strict causal effects.
+Competition is not randomly assigned. More productive firms may select into more competitive markets, and unobserved product quality may affect both competition exposure and firm performance. Therefore, results should be interpreted as conditional associations rather than strict causal effects.
 
